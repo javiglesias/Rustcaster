@@ -5,6 +5,8 @@ use std::io;
 use rand::Rng;
 use std::cmp::Ordering;
 use std::time::Duration;
+use std::fs::File;
+use std::io::prelude::*;
 
 use sdl2::pixels::Color;
 use sdl2::event::Event;
@@ -14,9 +16,6 @@ use sdl2::rect::Rect;
 
 const _SCREEN_W: i32 = 1200;
 const _SCREEN_H: i32 = 600;
-const _MAP_X: i32 = 8;
-const _MAP_Y: i32 = 8;
-const _MAP_S: i32 = 64;
 
 const _CELL_W: i32 = 90;
 const _CELL_H: i32 = 90;
@@ -28,69 +27,23 @@ const _3PI2: f32 = 3.0*_PI/2.0;
 const _DR: f32 = 0.01745329; // one degree in radians
 
 fn main() {
-    const _APPLES8:     u8      = 8;
-    const _APPLES16:    u16     = 16;
-    const _APPLES32:    u32     = 32;
-    const _APPLES64:    u64     = 64;
-    const _APPLES128:   u128    = 128;
-
-    const _PEARS8:      i8      = 8;
-    const _PEARS16:     i16     = 16;
-    const _PEARS32:     i32     = 32;
-    const _PEARS64:     i64     = 64;
-    const _PEARS128:    i128    = 128;
-
-    const _MELON32:     f32     = 32.0;
-    const _MELON64:     f64     = 64.0;
-
-    const _CHERRY:      bool    = false;
-
-    const _ORANGE:      char    = 'ª';
-
-    const _GRAPES:      (u8, i8, f32, char) = (255, 127, 3.0, '4');
-
-    
-    let _secret_number: u32 = rand::thread_rng()
-        .gen_range(1..=100);
-    let _banana = 1;
-    // loop {
-    //     let mut _guess = String::new();
-    //     println!("Guess a number:");
-    //     io::stdin()
-    //         .read_line(&mut _guess)
-    //         .expect("Failed the read.");
-    //     let _guess: u32 = match _guess.trim().parse() {
-    //         Ok(num) => num,
-    //         Err(_)  => {
-    //             println!("Guess ONLY number.");
-    //             continue;
-    //         }
-    //     };
-    //     match _guess.cmp(&_secret_number) {
-    //         Ordering::Less => println!("Guess higher next time."),
-    //         Ordering::Greater => println!("Guess Lower next time."),
-    //         Ordering::Equal =>
-    //         { 
-    //             println!("Guessed correctly");
-    //             break;
-    //         }
-    //     }
-    // }
     raycaster();
 }
 
-fn raycaster() -> bool
+fn raycaster()
 {
-    let _MAP: Vec<i32> = vec![
-        1,1,1,1,1,1,1,1,
-        1,0,0,0,0,0,0,1,
-        1,0,0,0,1,0,0,1,
-        1,0,0,0,1,0,0,1,
-        1,0,0,0,1,1,1,1,
-        1,0,1,0,0,0,0,1,
-        1,0,1,0,0,0,0,1,
-        1,1,1,1,1,1,1,1
-    ];
+    let mut _MAP_X: i32 = 8;
+    let mut _MAP_Y: i32 = 8;
+    let mut _MAP_S: i32 = _MAP_X * _MAP_Y;
+    let mut bin_depth = 1; //Quadtree
+    let mut map_file = File::open("resources\\map.txt").unwrap();
+    let mut map_data = String::new();
+    map_file.read_to_string(&mut map_data);
+    let map = map_data.split(",");
+    let mut _MAP: Vec<i32> = vec![];
+    map.for_each(|x|_MAP.push(x.parse().unwrap()));
+    _MAP_S = _MAP.len() as i32;
+    //println!("map file: {:?}", map);
     let _context = sdl2::init().unwrap();
     let _video_subsys = _context.video().unwrap();
     let _window = _video_subsys.window("rustcaster", 
@@ -116,6 +69,17 @@ fn raycaster() -> bool
                 Event::Quit {..} | 
                 Event::KeyDown { keycode : Some(Keycode::Escape), ..} => {
                     break 'running
+                },
+                Event::KeyDown { keycode : Some(Keycode::E), ..} => {
+                    // QUADTREE
+                    bin_depth += 2;
+                    _MAP_S = _MAP_S / bin_depth;
+                },
+                Event::KeyDown { keycode : Some(Keycode::Q), ..} => {
+                    // QUADTREE
+                    bin_depth -= 2;
+                    if bin_depth < 0 {bin_depth = 1;}
+                    _MAP_S = _MAP_S * 2;
                 },
                 _ => {}
             }
@@ -153,43 +117,48 @@ fn raycaster() -> bool
         _canvas.set_draw_color(Color::RGB(0, 0, 10));
         _canvas.clear();
         // DRAW MAP
-        let mut i: i32 = 0;
-        loop { // HEIGHT
-            let mut j: i32 = 0;
-            loop {// WIDTH
-                if _MAP[(i*_MAP_X+j) as usize] == 1 {
-                    _canvas.set_draw_color(Color::RGB(100, 0, 255));
-                } 
-                if _MAP[(i*_MAP_X+j) as usize] == 0 {
-                    _canvas.set_draw_color(Color::RGB(0, 255, 255));
+        let mut q = 1;
+        // loop {// se ejecuta bin_depth veces
+            let mut i: i32 = 0;
+            loop { // HEIGHT
+                let mut j: i32 = 0;
+                loop {// WIDTH
+                    if _MAP[(i*_MAP_X+j) as usize] == 1 {
+                        _canvas.set_draw_color(Color::RGB(100, 0, 255));
+                    } 
+                    if _MAP[(i*_MAP_X+j) as usize] == 0 {
+                        _canvas.set_draw_color(Color::RGB(0, 255, 255));
+                    }
+                    if _MAP[(i*_MAP_X+j) as usize] > 1 {
+                        _canvas.set_draw_color(Color::RGB(255, 255, 0));
+                    }
+                        let xo = j * _MAP_S * q;
+                        let yo = i * _MAP_S * q;
+                        _canvas.fill_rect(Rect::new(
+                            (xo + j + q) as i32, 
+                            (yo + i + q) as i32,
+                            (_MAP_S) as u32, 
+                            (_MAP_S) as u32));
+                        if j >= _MAP_X-1 { break; } // brekeamos el momento
+                        j+=1;
+                    }
+                    if i >= _MAP_Y-1 { break; }
+                    i+=1;
                 }
-                if _MAP[(i*_MAP_X+j) as usize] > 1 {
-                    _canvas.set_draw_color(Color::RGB(255, 255, 0));
-                }
-                let xo = j*_MAP_S;
-                let yo = i*_MAP_S;
-                _canvas.fill_rect(Rect::new(
-                    xo as i32, 
-                    yo as i32,
-                    (_MAP_S + 1) as u32, 
-                    (_MAP_S + 1) as u32));
-                if j >= _MAP_X-1 { break; } // brekeamos el momento
-                j+=1;
-            }
-            if i >= _MAP_Y-1 { break; }
-            i+=1;
-        }
+            // q += 1;
+            // if q >= bin_depth {break;}
+        // }
         // --DRAW MAP
         //Draw Player
-        //_canvas.set_draw_color(Color::RGB(255, 0, 0));
-        //_canvas.fill_rect(Rect::new(px as i32, py as i32, 8, 8));
-        // _canvas.draw_line(sdl2::rect::Point::new((px+4.0) as i32, (py+4.0) as i32),
-        //     sdl2::rect::Point::new((px + pdx + 5.0) as i32, (py + pdy + 5.0) as i32));
-        //_canvas.set_draw_color(Color::RGB(255, 200, 0));
+        _canvas.set_draw_color(Color::RGB(255, 0, 0));
+        _canvas.fill_rect(Rect::new(px as i32, py as i32, 8, 8));
+        _canvas.draw_line(sdl2::rect::Point::new((px+4.0) as i32, (py+4.0) as i32),
+            sdl2::rect::Point::new((px + pdx + 5.0) as i32, (py + pdy + 5.0) as i32));
+        _canvas.set_draw_color(Color::RGB(255, 200, 0));
         //--Draw Player
         // Draw 3d Rays
         // check Horizontal lines
-        let mut ra:f32 = pa;
+        let mut ra:f32 = pa - 30.0*_DR;
         let mut z = 0;
         let mut disT: f32 = 1.0;
         //_canvas.set_draw_color(Color::RGB(0, 200, 2));
@@ -249,8 +218,6 @@ fn raycaster() -> bool
                     break;
                 }
             }
-            // _canvas.draw_line(sdl2::rect::Point::new((px+4.0) as i32, (py+4.0) as i32),
-            //     sdl2::rect::Point::new(rx as i32, ry as i32));
             // check vertical lines
             ry = 0.0;
             rx = 0.0;
@@ -321,13 +288,12 @@ fn raycaster() -> bool
                 ca -= _2PI;
                 _canvas.set_draw_color(Color::RGB(0, 100, 0));
             }
-            //disT = disT*ca.cos();
+            disT = disT*ca.cos();
             let mut lineH = (_MAP_S*_SCREEN_H) as f32/disT;
             if lineH > _SCREEN_H as f32 {
                 lineH = _SCREEN_H as f32;
-            }
-            _canvas.draw_line(sdl2::rect::Point::new((z*_MAP_X+_SCREEN_H) as i32, (0) as i32),
-                sdl2::rect::Point::new((z*_MAP_X+_SCREEN_H) as i32, lineH as i32)); 
+            } 
+            _canvas.fill_rect(Rect::new((z*_MAP_X+_SCREEN_H) as i32, 0 as i32, 8, lineH as u32));
             // --Draw 3d Walls
             if z >= 60 {break;}
             else {
@@ -338,7 +304,6 @@ fn raycaster() -> bool
         // --Draw 3d Rays
         _canvas.present();
     }
-    return true;
 }
 
 fn dist(ax: f32, ay: f32, bx: f32, by: f32, ang: f32) -> f32 {
